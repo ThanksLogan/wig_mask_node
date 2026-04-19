@@ -1,3 +1,6 @@
+.DS_Store
+__pycache__/
+*.pyc
 images/*
 !images/template_mask_meta.json
 !images/template_mask.jpg
