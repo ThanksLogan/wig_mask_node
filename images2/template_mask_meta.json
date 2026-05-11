@@ -1,0 +1,11 @@
+{
+  "image_size": [2316, 3088],
+  "face_opening_bbox": [710, 629, 1585, 1580],
+  "anchors": {
+    "nose_center": [1154, 1175],
+    "left_temple": [747, 1022],
+    "right_temple": [1540, 1025],
+    "chin_bottom": [1152, 1608],
+    "forehead_center": [1166, 1106]
+  }
+}

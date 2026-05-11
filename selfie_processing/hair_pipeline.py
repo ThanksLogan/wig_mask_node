@@ -104,8 +104,12 @@ def _apply_selfie_hair_blur_fill(
     cfg: WigMaskConfig,
 ) -> tuple[np.ndarray, dict[str, np.ndarray | int]]:
     mask = np.where(hair_mask > 0, 255, 0).astype(np.uint8)
+    blur_expand_px = max(0, int(getattr(cfg, "selfie_hair_blur_expand_px", 0)))
+    if blur_expand_px > 0:
+        mask = _morph_mask(mask, dilate_px=blur_expand_px, erode_px=0)
     if not np.any(mask > 0):
         return image_bgr.copy(), {
+            "expanded_mask": np.zeros_like(mask),
             "core_mask": np.zeros_like(mask),
             "edge_band_mask": np.zeros_like(mask),
             "edge_alpha_mask": np.zeros_like(mask),
@@ -113,7 +117,8 @@ def _apply_selfie_hair_blur_fill(
             "strong_blur_ksize": 1,
         }
 
-    soft_blur_ksize = ensure_odd(max(1, int(cfg.selfie_hair_blur_ksize)))
+    blur_strength = max(0.1, float(getattr(cfg, "selfie_hair_blur_strength", 1.0)))
+    soft_blur_ksize = ensure_odd(max(1, int(round(float(cfg.selfie_hair_blur_ksize) * blur_strength))))
     strong_blur_ksize = ensure_odd(
         max(
             soft_blur_ksize,
@@ -143,6 +148,7 @@ def _apply_selfie_hair_blur_fill(
         out = _blend_bgr(out, soft_blurred, edge_alpha_mask)
     out[core_mask > 0] = strong_blurred[core_mask > 0]
     return out, {
+        "expanded_mask": mask,
         "core_mask": core_mask,
         "edge_band_mask": edge_band_mask,
         "edge_alpha_mask": edge_alpha_mask,
@@ -381,6 +387,66 @@ def _build_face_perimeter_mask(face_mask: np.ndarray, thickness_px: int) -> np.n
     return cv2.subtract(face_mask, inner)
 
 
+def _apply_eye_line_top_trim(
+    mask: np.ndarray,
+    landmarks_px: np.ndarray,
+    trim_px: int,
+) -> tuple[np.ndarray, dict[str, np.ndarray | int]]:
+    trim_px = max(0, int(trim_px))
+    empty = np.zeros_like(mask)
+    if trim_px <= 0 or not np.any(mask > 0):
+        return mask.copy(), {
+            "trimmed_mask": mask.copy(),
+            "trim_requirement_map": empty,
+            "eye_line_mask": empty,
+            "eye_line_y": -1,
+        }
+
+    left_eye = _centroid(landmarks_px[LEFT_EYE_INDICES])
+    right_eye = _centroid(landmarks_px[RIGHT_EYE_INDICES])
+    eye_line_y = int(round((float(left_eye[1]) + float(right_eye[1])) / 2.0))
+    eye_line_y = int(np.clip(eye_line_y, 0, mask.shape[0] - 1))
+
+    rows_with_mask = np.where(np.any(mask > 0, axis=1))[0]
+    if rows_with_mask.size == 0:
+        return mask.copy(), {
+            "trimmed_mask": mask.copy(),
+            "trim_requirement_map": empty,
+            "eye_line_mask": empty,
+            "eye_line_y": eye_line_y,
+        }
+
+    top_y = int(rows_with_mask[0])
+    if top_y >= eye_line_y:
+        eye_line_mask = np.zeros_like(mask)
+        eye_line_mask[eye_line_y:eye_line_y + 1, :] = 255
+        return mask.copy(), {
+            "trimmed_mask": mask.copy(),
+            "trim_requirement_map": empty,
+            "eye_line_mask": eye_line_mask,
+            "eye_line_y": eye_line_y,
+        }
+
+    distance = cv2.distanceTransform(mask, cv2.DIST_L2, 3)
+    requirement = np.zeros(mask.shape, dtype=np.float32)
+    upper_span = max(1, eye_line_y - top_y)
+    for y in range(top_y, eye_line_y):
+        t = float(eye_line_y - y) / float(upper_span)
+        eased = t * t
+        requirement[y, :] = float(trim_px) * eased
+
+    trimmed_mask = np.where((mask > 0) & (distance > requirement), 255, 0).astype(np.uint8)
+    eye_line_mask = np.zeros_like(mask)
+    eye_line_mask[eye_line_y:eye_line_y + 1, :] = 255
+    requirement_u8 = np.clip(np.rint(requirement * (255.0 / max(1, trim_px))), 0, 255).astype(np.uint8)
+    return trimmed_mask, {
+        "trimmed_mask": trimmed_mask,
+        "trim_requirement_map": requirement_u8,
+        "eye_line_mask": eye_line_mask,
+        "eye_line_y": eye_line_y,
+    }
+
+
 def _connect_floating_face_hair(
     base_mask: np.ndarray,
     floating_hair_mask: np.ndarray,
@@ -607,6 +673,7 @@ def remove_selfie_hair(image_bgr: np.ndarray, cfg: WigMaskConfig | None = None, 
     if blur_debug:
         debug.extra.update(
             {
+                "selfie_hair_blur_expanded_mask": blur_debug["expanded_mask"],
                 "selfie_hair_blur_core_mask": blur_debug["core_mask"],
                 "selfie_hair_blur_edge_band_mask": blur_debug["edge_band_mask"],
                 "selfie_hair_blur_edge_alpha_mask": blur_debug["edge_alpha_mask"],
@@ -757,6 +824,11 @@ def prepare_wig_selfie_tryon(
     warped_wig_face_hair_mask = warp_mask_to_target(wig_transfer_source_mask, wig_to_selfie_affine, selfie_bgr.shape[:2], cfg)
     warped_wig_face_overlap_hair_mask = warp_mask_to_target(wig_face_overlap_hair_mask, wig_to_selfie_affine, selfie_bgr.shape[:2], cfg)
     warped_wig_image = warp_image_to_target(wig_bgr, wig_to_selfie_affine, selfie_bgr.shape[:2])
+    warped_wig_face_hair_mask, top_trim_debug = _apply_eye_line_top_trim(
+        warped_wig_face_hair_mask,
+        selfie_landmarks,
+        int(cfg.wig_top_trim_px),
+    )
 
     selfie_face_cutout = selfie_face_mask.copy()
     inset_px = max(0, int(cfg.template_face_cutout_inset_px))
@@ -810,6 +882,7 @@ def prepare_wig_selfie_tryon(
             "warped_wig_image": warped_wig_image,
             "category_mask": selfie_cat_mask,
             "affine_matrix": wig_to_selfie_affine,
+            **top_trim_debug,
             **bridge_debug,
             **island_debug,
         },
@@ -851,6 +924,7 @@ def prepare_wig_selfie_tryon(
                 "face_mask_raw": selfie_face_mask,
                 **(
                     {
+                        "selfie_hair_blur_expanded_mask": selfie_blur_debug["expanded_mask"],
                         "selfie_hair_blur_core_mask": selfie_blur_debug["core_mask"],
                         "selfie_hair_blur_edge_band_mask": selfie_blur_debug["edge_band_mask"],
                         "selfie_hair_blur_edge_alpha_mask": selfie_blur_debug["edge_alpha_mask"],

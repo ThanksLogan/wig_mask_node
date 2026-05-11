@@ -319,6 +319,9 @@ class WigSelfiePrepNode:
                 "template_face_cutout_inset_px": ("INT", {"default": 4, "min": 0, "max": 64}),
                 "wig_mask_expand_px": ("INT", {"default": 16, "min": 0, "max": 128}),
                 "wig_face_overlap_expand_px": ("INT", {"default": 4, "min": 0, "max": 64}),
+                "wig_top_trim_px": ("INT", {"default": 0, "min": 0, "max": 64}),
+                "selfie_hair_blur_expand_px": ("INT", {"default": 0, "min": 0, "max": 64}),
+                "selfie_hair_blur_strength": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 4.0, "step": 0.05}),
                 "connect_floating_face_hair": ("BOOLEAN", {"default": True}),
                 "floating_face_hair_max_expand_px": ("INT", {"default": 18, "min": 0, "max": 64}),
                 "fill_face_islands": ("BOOLEAN", {"default": True}),
@@ -356,6 +359,9 @@ class WigSelfiePrepNode:
         template_face_cutout_inset_px,
         wig_mask_expand_px,
         wig_face_overlap_expand_px,
+        wig_top_trim_px,
+        selfie_hair_blur_expand_px,
+        selfie_hair_blur_strength,
         connect_floating_face_hair,
         floating_face_hair_max_expand_px,
         fill_face_islands,
@@ -397,6 +403,9 @@ class WigSelfiePrepNode:
             )
             cfg.wig_mask_expand_px = int(wig_mask_expand_px)
             cfg.wig_face_overlap_expand_px = int(wig_face_overlap_expand_px)
+            cfg.wig_top_trim_px = int(wig_top_trim_px)
+            cfg.selfie_hair_blur_expand_px = int(selfie_hair_blur_expand_px)
+            cfg.selfie_hair_blur_strength = float(selfie_hair_blur_strength)
             cfg.connect_floating_face_hair = bool(connect_floating_face_hair)
             cfg.floating_face_hair_max_expand_px = int(floating_face_hair_max_expand_px)
             cfg.fill_face_islands = bool(fill_face_islands)

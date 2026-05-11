@@ -69,6 +69,7 @@ class WigMaskConfig:
     hair_blur_ksize: int = 11
     wig_mask_expand_px: int = 16
     wig_face_overlap_expand_px: int = 4
+    wig_top_trim_px: int = 0
     connect_floating_face_hair: bool = True
     floating_face_hair_max_expand_px: int = 18
     fill_face_islands: bool = True
@@ -82,6 +83,8 @@ class WigMaskConfig:
     # Selfie hair removal output controls
     selfie_hair_fill_gray: int = 160
     selfie_hair_blur_ksize: int = 31
+    selfie_hair_blur_expand_px: int = 0
+    selfie_hair_blur_strength: float = 1.0
     selfie_hair_core_erode_px: int = 6
     selfie_hair_edge_feather_px: int = 9
     selfie_hair_core_blur_scale: float = 2.0
